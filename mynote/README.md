@@ -392,3 +392,242 @@
 	exit : 離開
 	ctrl + a + c : 新增視窗
 	ctrl + a + n : 變換視窗
+## chat
+![README](./chat.png)
+
+## fifo
+	#include <stdio.h>
+	#include <string.h>
+	#include <fcntl.h>
+	#include <sys/stat.h>
+	#include <sys/types.h>
+	#include <unistd.h>
+
+	#define SMAX 80
+
+	int main(int argc, char *argv[]) {
+    	int fd;
+    	char *fifo0 = "/tmp/user0";
+    	char *fifo1 = "/tmp/user1";
+    	mkfifo(fifo0, 0666); 
+    	mkfifo(fifo1, 0666);
+
+    	char *me, *you;
+		if (strcmp(argv[1], "0")) { // me:0 => you:1
+			me = fifo0;
+        	you = fifo1;
+    	} else { // me:1 => you:0
+        	me = fifo1;
+       		you = fifo0;
+    	}
+
+    	char msg[SMAX];
+    	if (fork() == 0) { 
+        	fd = open(you, O_RDONLY); 
+        	while (1) {
+            	int n = read(fd, msg, sizeof(msg));
+            	if (n <= 0) break;
+            	printf("receive: %s", msg); 
+        	}
+        	close(fd);
+    	} else { 
+        	fd = open(me, O_WRONLY); 
+        	while (1) {
+            	fgets(msg, SMAX, stdin); 
+            	int n = write(fd, msg, strlen(msg)+1); 
+            	if (n<=0) break;
+        	}
+        	close(fd); 
+    	}
+    	return 0;
+	}
+## mmap
+	#include <stdio.h>
+	#include <string.h>
+	#include <fcntl.h>
+	#include <sys/mman.h>
+	#include <unistd.h>
+
+	#define SMAX 80
+
+	int main(int argc, char *argv[]) {
+    	int id = argv[1][0]-'0';
+    	int fd = open("chat.dat", O_RDWR | O_CREAT); 
+    	char *buf = mmap(NULL, 2*SMAX, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+    	char *myMsg, *yourMsg;
+    	if (id == 0) {
+        	myMsg = buf;
+        	yourMsg = buf + SMAX;
+    	} else {
+        	myMsg = buf + SMAX;
+        	yourMsg = buf;
+    	}
+    	if (fork() == 0) {
+        	// child: receive message and print
+        	while (1) {
+            	if (yourMsg[0] != '\0') {
+                	printf("receive: %s", yourMsg);
+                	yourMsg[0] = '\0';
+            	}
+        	}
+    	} else {
+        	// parent: readline and put into myMsg in buf
+        	while (1) {
+            	fgets(myMsg, SMAX, stdin);
+        	}
+    	}
+    	munmap(buf, 2*SMAX);
+    	close(fd);
+    	return 0;
+	}
+## msg
+	#include <stdio.h>
+	#include <string.h>
+	#include <sys/types.h>
+	#include <sys/ipc.h>
+	#include <sys/msg.h>
+	#include <sys/stat.h>
+	#include <unistd.h>
+
+	#define SMAX 80
+
+	struct msg_t {
+    	long mtype; 
+    	char mtext[SMAX];
+	};
+
+	int main(int argc, char *argv[]) {
+    	int id = argv[1][0]-'0';
+    	int q0 = msgget((key_t) 1235, 0666|IPC_CREAT); 
+    	int q1 = msgget((key_t) 1236, 0666|IPC_CREAT);
+    	int myQ, yourQ;
+    	if (id == 0) {
+        	myQ = q0;
+        	yourQ = q1;
+    	} else {
+        	myQ = q1;
+        	yourQ = q0;
+    	}
+    	struct msg_t msg = {.mtype=1};
+    	// char msg[SMAX];
+    	if (fork() == 0) { 
+        	// child: receive message and print
+        	while (1) {
+            	msgrcv(yourQ, &msg, SMAX, 0, 0);
+            	printf("receive: %s", msg.mtext); 
+        	}
+    	} else {
+        	// parent: readline and put into myMsg in buf
+        	while (1) {
+            	fgets(msg.mtext, SMAX, stdin);
+            	msgsnd(myQ, &msg, SMAX, 0); 
+        	}
+    	}
+    	return 0;
+	}
+## udp
+	#include <stdio.h>
+	#include <string.h>
+	#include <stdlib.h>
+	#include <sys/types.h>
+	#include <sys/socket.h>
+	#include <arpa/inet.h>
+	#include <netinet/in.h>
+	#include <unistd.h>
+
+	#define SMAX 80
+
+	int main(int argc, char *argv[]) {
+    	int sfd = socket(AF_INET, SOCK_DGRAM, 0);
+    	struct sockaddr_in saddr, raddr;
+    	memset(&saddr, 0, sizeof(saddr));
+    	memset(&raddr, 0, sizeof(raddr));
+    	saddr.sin_family = AF_INET;
+    	saddr.sin_port = htons(8888);
+    	char msg[SMAX];
+    	if (argc==1) { 
+        	printf("I am server...\n");
+        	saddr.sin_addr.s_addr = INADDR_ANY;
+        	bind(sfd, (struct sockaddr*) &saddr, sizeof(struct sockaddr));
+        	socklen_t rAddrLen = sizeof(struct sockaddr);
+        	int rlen = recvfrom(sfd, msg, SMAX, 0, (struct sockaddr*) &raddr, &rAddrLen);
+        	printf("receive: %s from client addr %s\n", msg, inet_ntoa(raddr.sin_addr));
+    	} else { // client
+        	printf("I am client...\n");
+        	saddr.sin_addr.s_addr = inet_addr(argv[1]);
+        	memcpy(&raddr, &saddr, sizeof(saddr));
+        	char *connMsg = "<connect request>";
+        	sendto(sfd, connMsg, strlen(connMsg)+1, 0, (struct sockaddr*) &saddr, sizeof(struct sockaddr));
+    	}
+    	if (fork() == 0) {
+        	// child: receive message and print
+        	while (1) {
+            	socklen_t rAddrLen = sizeof(struct sockaddr);
+            	recvfrom(sfd, msg, SMAX, 0, (struct sockaddr*) &raddr, &rAddrLen); 
+            	printf("receive: %s", msg); 
+        	}
+    	} else {
+        	// parent: readline and send msg
+        	while (1) {
+            	fgets(msg, SMAX, stdin);
+            	sendto(sfd, msg, strlen(msg)+1, 0, (struct sockaddr*) &raddr, sizeof(struct sockaddr));
+        	}
+    	}
+    	close(sfd);
+    	return 0;
+	}
+## tcp
+	#include <stdio.h>
+	#include <string.h>
+	#include <stdlib.h>
+	#include <sys/types.h>
+	#include <sys/socket.h>
+	#include <arpa/inet.h>
+	#include <netinet/in.h>
+	#include <unistd.h>
+
+	#define SMAX 80
+
+	int main(int argc, char *argv[]) {
+    	int sfd = socket(AF_INET, SOCK_STREAM, 0);
+    	int cfd, fd;
+    	struct sockaddr_in saddr, raddr;
+    	memset(&saddr, 0, sizeof(saddr));
+    	memset(&raddr, 0, sizeof(raddr));
+    	saddr.sin_family = AF_INET;
+    	saddr.sin_port = htons(8888);
+    	char msg[SMAX];
+    	if (argc==1) { 
+        	printf("I am server...\n");
+        	saddr.sin_addr.s_addr = INADDR_ANY;
+        	bind(sfd, (struct sockaddr*) &saddr, sizeof(struct sockaddr));
+        	listen(sfd, 1);
+        	socklen_t rAddrLen = sizeof(struct sockaddr);
+        	cfd = accept(sfd, (struct sockaddr*) &raddr, &rAddrLen);
+        	printf("accept: cfd=%d client addr %s\n", cfd, inet_ntoa(raddr.sin_addr));
+        	fd = cfd;
+    	} else { 
+        	printf("I am client...\n");
+        	saddr.sin_addr.s_addr = inet_addr(argv[1]);
+        	connect(sfd, (struct sockaddr*) &saddr, sizeof(struct sockaddr)); 
+        	fd = sfd;
+        	printf("connect success: sfd=%d server addr=%s\n", sfd, inet_ntoa(saddr.sin_addr));
+    	}
+
+    	if (fork() == 0) { 
+        	// child: receive message and print
+        	while (1) {
+            	int n = recv(fd, msg, SMAX, 0); 
+            	if (n <=0) break;
+            	printf("receive: %s", msg); 
+        	}
+    	} else { 
+        	// parent: readline and send msg
+        	while (1) {
+            	fgets(msg, SMAX, stdin);
+            	send(fd, msg, strlen(msg)+1, 0);
+        	}
+    	}
+    	close(sfd);
+    	return 0;
+	}
