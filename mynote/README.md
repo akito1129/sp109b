@@ -1,5 +1,9 @@
 # 鄒耀文的系統程式筆記
 
+## Git指令
+
+* master改成main
+
 ## Markdown
 
 * [Markdown是什麼?](http://programmermedia.org/root/%E9%99%B3%E9%8D%BE%E8%AA%A0/%E6%8A%80%E8%83%BD/markdown.md)
@@ -348,3 +352,43 @@
 		return 0;
 	}
 ![README](./12.png)
+
+## fork1.c
+![README](./fork1ed.png)
+
+## fork2.c
+![README](./fork2ed.png)
+
+## fork3.c
+![README](./fork3ed.png)
+
+## twochildfork2.c
+![README](./twochildfork2ed.png)
+
+## execvp1.c
+![README](./execvp1ed.png)
+
+## stderr1.c
+![README](./stderr1ed.png)
+## stderr2.c
+![README](./stderr2ed.png)
+## blocking1.c 
+![README](./blocking1ed.png)
+## nonblocking1.c
+![README](./nonblocking1ed.png)
+## nonblocking2.c
+![README](./nonblocking2ed.png)
+## time.c
+![README](./timed.png)
+## pipe
+![README](./pipe.png)
+## fifo
+* install screen
+##
+	sudo apt-get install screen
+* 指令
+##
+	screen : 執行
+	exit : 離開
+	ctrl + a + c : 新增視窗
+	ctrl + a + n : 變換視窗
